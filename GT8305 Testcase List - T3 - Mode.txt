@@ -1,0 +1,753 @@
+#---------------------------------------------GT5238 Testcase List:『Mode』-----------------------------------------------
+
+#_________________________________________________________________________________________________________________________
+{ 0 模式设计概览
+0.1 统计：
+    testcase总数 = PATRA + PARTB + PARTC = 
+{0.2 GT8305的模式/工作状态 : 
+    0.2.1 fault标记处于寄存器 0x2的 :
+        SNS_A_OCP
+        SNS_B_OCP
+        SNS_C_OCP
+        VDS_LC
+        VDS_HC
+        VDS_LB
+        VDS_HB
+        VDS_HA
+        VDS_LA
+    0.2.2 fault标记处于寄存器 0x3 的 :
+        VCPH_OVLO_ABS
+        VCPH_OVLO
+        VCPH_UVLO
+        VCP_LSD_UVLO
+        AVDD_UVLO
+        VREG_UV
+        OTSD
+        PVDD_UVLO2
+    0.2.3 fault标记处于寄存器 0x4 的 :
+        VGS_LC
+        VGS_HC
+        VGS_HB
+        VGS_LB
+        VGS_HA
+        VGS_LA
+    上述的fault类错误都可以用同样的方式来进行设置、清除等
+    0.2.4 其他fault类错误
+        WATCH_DOG
+}
+{0.3  
+    0.3.1 fault的使能/禁止设置处于寄存器0x9的 :
+        ___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_OTSD            BIT10    DISABLE        默认禁止此fault，并且其他的0都代表使能，而这里0代表禁止
+        DISABLE_PVDD_UVLO2      BIT9     ENABLE
+        DISABLE_GRDV_FAULT      BIT8     ENABLE
+        DISABLE_SNS_CLAMP       BIT7     ENABLE
+        DISABLE_SNS_OCP         BIT4     ENABLE
+        DISABLE_SNS_WD          BIT3     DISABLE        默认禁止此fault，并且其他的0都代表使能，而这里0代表禁止
+        ___________________________________________________________________
+        
+        
+    0.3.2 fault的使能/禁止设置处于寄存器0xb的 :
+        ___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_VREG_PWRGD      BIT10    ENABLE   
+        ___________________________________________________________________    
+        
+    0.3.3 fault的使能/禁止设置处于寄存器0xc的 :    
+        #___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_VDS_OCP         BIT2-BIT0 ENABLE        VDS_OCP有三种模式:DISABLE,REPORT和SHUTDOWN，仅当 2:0 = 010 的时候
+                                                        处于DISABLE模式
+        #___________________________________________________________________   
+		#补充@2017.03.28 : 关于VDS OCP的测试，后面需要再详细测试下GT8305芯片的对应功能，目前测试出来和datasheet不一致[没有report only模式]
+}    
+{0.4 
+    0.4.1 warning标记处于寄存器 0x1的 :
+		D7	:	PVDD_UVFL
+		D6	:	PVDD_OVFL
+		D4	:	VCHP_UVFL
+		D0	:	OTW
+}   
+#____________________________________________________END__________________________________________________________________
+}
+
+#PART A : Fualt测试 - t3_01~t3_19
+    #注意 ：在disable的开关测试的时候，有以下两点需要特别注意：
+	#	1.disable set了之后需要get
+	#   2.在有fault产生的情况下disable相应的fault，此时判断寄存器0x1~0x4的值不能再用disable的设置，因为此时的disable不影响fault
+#_________________________________________________________________________________________________________________________
+{01 测试用例名称 : t3_01 basic mode jump 1
+1.1 测试要点     : 
+	测试基本的模式/状态跳转 : Idle <-----> Unpowered <-----> Standby，为了能够测试到上电过程中的现象，所以将上电时间增加了1000倍，
+	上升1V要1ms左右
+1.2 测试步骤     : 
+	{
+    1.2.1  拉低en_gate和wake信号，执行por_with_fault
+	#测试平台有两个por的task，一个是不带有任何错误的por，一个类似正常的芯片，在上电的时候带有pvdd的uvlo等错误
+	#1.2.1中为了测试上电之后的unpowered状态以及到standby的调准，所以执行por_with_fault，执行之后，会有fault
+    1.2.2  等por下降沿之后，检测当前状态是否处于unpowered状态，同时查看nfault是否为低
+	1.2.3  读寄存器0x1，应该有错误标记，读写寄存器0x5，看是否能读写正常
+    1.2.3  等pvdd_uvlo1拉低之后，看当前状态是否依旧处于unpowered状态，同时查看nfault是否为高
+    1.2.4  再次读写寄存器0x5，看是否能读写正常
+	1.2.5  等pvdd_uvlo2拉低之后，看当前状态是否切换到IDLE状态，同时查看nfault是否为低
+	1.2.6  此时既有fault又有warning，但是fault源已经撤销，使用clr flt将nfault清到high状态
+	1.2.7  读寄存器0x1，应该没有错误标记[fault和warning都没有]
+	1.2.7  等pvdd_uvfl拉低之后，查看当前状态是否保持IDLE状态，同时查看nfault是否为高
+	1.2.8  读取寄存器0x1，寄存器的值保持有错误的标记
+    1.2.9  再次读取寄存器0x1，寄存器的warning错误标记被上一个读寄存器0x1清除
+	1.2.10 本项测试完成
+	}
+1.3 测试结果 :
+	{
+	2017-03-31 : 第1次测试通过
+	2017-04-01 :  
+	}
+}
+{02 测试用例名称 : t3_02 basic mode jump 2
+2.1 测试要点     : 
+	测试基本的模式/状态跳转 : Unpowered <-----> Standby <-----> Operating
+	#因为t3_01已经测试了idle到unpowered的transition，因此这里主要测试Unpowered到Operating，以及operating到Standby
+2.2 测试步骤     : 
+	{
+    2.2.1  拉低en_gate和wake信号，执行por
+    2.2.2  等por下降沿之后，检测当前状态是否处于unpowered状态，同时查看nfault是否为低
+	2.2.3  读寄存器0x1，应该有错误标记，读写寄存器0x5，看是否能读写正常
+    2.2.3  等pvdd_uvlo1拉低之后，看当前状态是否依旧处于unpowered状态，同时查看nfault是否为高
+    2.2.4  再次读写寄存器0x5，看是否能读写正常
+	2.2.5  等pvdd_uvlo2拉低之后，看当前状态是否切换到IDLE状态，同时查看nfault是否为低
+	2.2.6  此时既有fault又有warning，但是fault源已经撤销，使用clr flt将nfault清到high状态
+	2.2.7  读寄存器0x1，应该没有错误标记[fault和warning都没有]
+	2.2.7  等pvdd_uvfl拉低之后，查看当前状态是否保持IDLE状态，同时查看nfault是否为高
+	2.2.8  读取寄存器0x1，寄存器的值保持有错误的标记
+    2.2.9  再次读取寄存器0x1，寄存器的warning错误标记被上一个读寄存器0x1清除
+	2.2.10 本项测试完成
+	2.2.28 本项测试完成
+	#注意:
+	因为1.3.26中还会重复执行一次，因此上述步骤会循环执行4次[en_gate的初始值的不同以及撤销fault源之前的en_gate的值不同]
+	}
+}	
+{03 测试用例名称 : t3_03 
+3.1 测试要点     : 
+    随机测试fault的set和clear，在测试中，会随机设置多个fault源并且进行随机撤销。因为OTSD是默认disable的，所以在测试OTSD之前，
+	先将其使能测试的fault包括0.2.4中前23个fault，然后在测试过程中需要测试到en_gate的状态对fault是否会产生影响。本项测试在源
+	撤销后采用clr_flt来清除fault	
+3.2 测试步骤     : 
+	{
+    3.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    3.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+    3.2.3  执行随机数生成函数，获取fault源以及fault clear的随机值，随机数约束如下
+		   fault_src != 0;
+		   fault_clr  <  fault_src;
+		   这样约束可以保证有源产生，然后clr和src与逻辑之后一定有1变为0[clear动作]
+    3.2.3  en_gate初始值设置为0
+    3.2.4  获取所有fault的disable设置
+	3.2.5  将获得的fault源输入按照3.2.3中的获取的随机数送到到digital的输入
+	3.2.6  检查在5个系统周期内是否有拉低nfault，拉低则说明产生了fault错误，没有检测到则说明此项测试出错，直接finish
+	3.2.7  持续监控gate driver处于关闭状态、nfault保持低电平[检测间隔目前为10ns]
+	3.2.8  对PWM输入持续送入激励，验证gate driver在此期间一直输出低电平
+    3.2.9  在3.2.7和3.2.8执行的同时根据前面所获取的disable设置以及fault源输入检测状态寄存器0x1~0x4上的所有值
+	3.2.10 等待50ms，此时间主要用于3.2.8和3.2.9的检测 
+	3.2.11 开始测试在源未撤销的情况下多种清除手段无法清除fault，第一步是写两次0x1，然后判断0x1的返回依旧是有fault标记
+	3.2.12 使用en_gate的低脉冲也无法清除fault，执行完成之后en_gate保持高
+	3.2.13 用clr_flt[寄存器0x9的BIT1写1]的方式无法清除fault
+	3.2.14 拉低en_gate，再次发送clr_flt，无法清除fault
+	3.2.15 设定源撤销前en_gate的电平值为A，此时A=0
+	3.2.16 等待一定时间之后，开始将所有的fault源改为fault_src和fault_clr的与的结果
+	3.2.17 用原有的fault_src来检查寄存器0x1~0x4上的错误标记[因为还没被清除]
+	3.2.18 测试连续两次写寄存器0x1不会对fault标记造成影响
+	3.2.19 根据还有没有fault源来决定是否关闭nfault的低电平检测 : 
+	        A.当还有错误源的时候，nfault低电平检测保持
+			B.当没有错误源了之后，因为nfault会被接下来的清除动作清除，因此要关闭nfault的低电平检测
+	3.2.20 将gate driver的检测使能force成0，因为接下来的clr_flt之后假设打开gate driver会有一定的delay，在此之前如果有pwm
+	改变，程序设定会自动打开检查，而造成检查出错，所以必须要force，因此，后面需要有对应的release
+	3.2.21 发起clr_flt，用以清除已经没有源的fault，然后等待5个系统时钟之后清除动作的影响完成
+	3.2.22 根据还有没有fault源来决定是否关闭gate driver : 
+	        A.当还有错误源，或者此时en_gate为低，则gate driver保持关闭状态，gate_driver_off赋值1
+			B.如果A条件不满足，则清除之后gate_driver会被重新打开，并将off赋值0	
+	3.2.23 等gate driver开或者关决定好之后，再release掉前面的force，并将gate_driver检查使能主动置高[非force]
+	3.2.24 如果此时没有fault源，则需要开启nfault信号是否一直拉高的检测
+	3.2.25 根据现有的fault源检测0x1~0x4的值，然后延时10ms，读一下寄存器0x1做一些基本的检测
+	#接下来关闭所有fault	
+	3.2.24 关闭nfault的低检测，将所有fault源设置为0
+	3.2.25 等待5个系统时钟周期后，将gate driver的检测force到0
+	3.2.26 清除fault之前拉高en_gate，然后发送clr_flt命令
+	3.2.27 等待5个系统时钟周期后，gate driver off置为0，nfault常高检测开启，释放gate driver的检测使能，并主动拉高gate driver的检测使能
+	3.2.28 检查错误标记是否全部消失，等待1ms之后，关闭pwm的输出，然后拉低gate driver的检测使能，停止检测nfault的保持高的检测
+	3.2.29 重新随机获取fault源和fault清除信号，然后执行3.2.3~3.2.28的整个循环，循环执行100次
+	#上述执行循环次数可以增加
+	3.2.30 更改3.2.2中en_agte的初始值为1，然后执行3.2.3 ~ 3.2.29的循环
+	3.2.31 更改第一次撤销fault源之前的en_gate的值为1，然后执行3.2.2~3.2.30的循环
+	3.2.32 本项测试完成
+	}
+}	
+{04 测试用例名称 : t3_04 
+4.1 测试要点     : 
+    测试基本的fault disable对fault的影响 : 	disable otsd
+	#注意 ：
+	#在disable otsd的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+	"----Error   : 1.在fault被disable的情况下可以清除fault还没有被测试，RTL还未修改，tc已修改[20170327]"
+	"----Success : 1."
+4.2 测试步骤     : 
+	{
+    4.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    4.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态，将ostd的检测写成disable状态
+    4.2.3  执行nfault的常拉高检测，开启gate driver的检测，检查寄存器0x1~0x4之后直接设置otsd的fault源[nfault信号不会拉低]	
+    4.2.4  检查寄存器0x1~0x4上是否产生对应的fault标记
+	4.2.5  等待50ms的时间用于nfault和gate_driver的检测
+	4.2.6  再次检查寄存器0x1~0x4上是否产生对应的fault标记
+	4.2.7  关闭nfault的常高检测，然后force gate driver的检测为0[因为接下来会产生fault]
+	#下面的4.2.8为了证明在源存在情况下直接去掉disable，会自动产生fault
+	4.2.8  使能otsd功能，检查在5个系统周期内是否有拉低nfault，拉低则说明产生了fault错误，没有检测到则说明此项测试出错，直接finish
+	4.2.9  release前面的fault之后，主动开启gate driver检测使能，持续监控gate driver处于关闭状态、nfault保持低电平[检测间隔目前为10ns]
+	4.2.10 对PWM输入持续送入激励，验证gate driver在此期间一直输出低电平
+	4.2.11 然后读寄存器0x1~0x4上是否产生对应的fault标记[此时应该产生fault]
+	4.2.12 等待50ms的时间用于nfault和gate_driver的检测
+	#因为重新disable fault不会清除fault，所以下面原来的4.2.13撤销
+	"4.2.13 关闭nfault的常低检测，然后force gate driver的检测为0[因为接下来会清除fault，打开gate driver]" 
+	4.2.13 在源不撤销的情况下重新disable otsd检测[认为在fault存在的情况下disable fault的检测，fault不能被clear]
+	#下面的4.2.15也因为fault不能被disable清除而被撤销
+	"4.2.15 等待5个系统时钟周期，然后开始nfault的常高检测，将gate driver的off信号设置为无效状态，然后release掉前面的force并主动开启gate driver检测"
+	4.2.14 再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	#上面的4.2.14~4.2.16证明了在fault源还在的情况下，fault不能被disable功能清除，但是当disable之后可以被清除动作清除
+	4.2.15 在disable有效的情况下，clr_flt以及en_gate都可以清除fault ：包括标记，gate driver 以及nfault信号
+	4.2.16 等待10ms的时间用于nfault和gate_driver的检测，然后都寄存器0x1~0x4，fault标记不变，然后再等10ms
+	#下面两条因为fault不能被disable清除，也被注释掉
+	"
+	4.2.18 再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	4.2.19 重新执行4.2.7~4.2.18证明disable和enable可以来回切换并且无错误，最后停在有fault源，但是fault被disable清除掉的状态
+	"
+	4.2.17 确保fault处于enable状态，并再次检查寄存器0x1~0x4上是否产生对应的fault标记[应该依旧有错误标记]
+	4.2.18 等待10ms之后继续测试
+	4.2.19 撤掉fault源，接下来测试在fault源撤销的情况下，disable功能是否能清除掉fault，经过测试DRV8305是不能清除[但是disbale得情况下可以用clr_flt来清除]
+	4.2.20 等待10ms，再次读取0x1~0x4，错误标记依旧存在，然后disable otsd，等待5个周期之后检查fault标记
+	4.2.21 等待10ms测试时间，然后尝试在nfault=0，fault源已经被撤销，fault功能被disable的情况下清除fault
+	4.2.22 发送clr_flt，然后检测标记，证明能清除fault
+	4.2.23 等待50ms，再检查一次0x1~0x4，没有任何错误
+	4.2.22 本项测试完成
+
+	}
+}	
+{05 测试用例名称 : t3_05 
+5.1 测试要点     : 
+    测试基本的fault disable对fault的影响 : 	disable pvdd_uvlo_2
+	#注意 ：
+	#在disable pvdd_uvlo_2的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+	###注意
+	"每set一遍disable就需要get一下,之前的版本是都没有get，所以testbench的disable可能全部是0"
+	"----Error   : 1.在fault被disable的情况下可以清除fault还没有被测试，RTL还未修改，tc还未修改[20170327]"
+	"----Success : 1."
+5.2 测试步骤     : 
+	{
+    5.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    5.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态，将ostd的检测写成disable状态
+    5.2.3  执行nfault的常拉高检测，开启gate driver的检测，检查寄存器0x1~0x4之后直接设置pvdd_uvlo_2的fault源[nfault信号不会拉低]	
+    5.2.4  检查寄存器0x1~0x4上是否产生对应的fault标记
+	5.2.5  等待50ms的时间用于nfault和gate_driver的检测
+	5.2.6  再次检查寄存器0x1~0x4上是否产生对应的fault标记
+	5.2.7  关闭nfault的常高检测，然后force gate driver的检测为0[因为接下来会产生fault]
+	#下面的5.2.8为了证明在源存在情况下直接去掉disable，会自动产生fault
+	5.2.8  使能pvdd_uvlo_2功能，检查在5个系统周期内是否有拉低nfault，拉低则说明产生了fault错误，没有检测到则说明此项测试出错，直接finish
+	5.2.9  release前面的fault之后，主动开启gate driver检测使能，持续监控gate driver处于关闭状态、nfault保持低电平[检测间隔目前为10ns]
+	5.2.10 对PWM输入持续送入激励，验证gate driver在此期间一直输出低电平
+	5.2.11 然后读寄存器0x1~0x4上是否产生对应的fault标记[此时应该产生fault]
+	5.2.12 等待50ms的时间用于nfault和gate_driver的检测
+	5.2.13 在源不撤销的情况下重新disable pvdd_uvlo_2检测[认为在fault存在的情况下disable fault的检测，fault不能被clear]
+	5.2.14 再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	#上面的5.2.14~5.2.16证明了在fault源还在的情况下，fault不能被disable功能清除，但是当disable之后可以被清除动作清除
+	5.2.15 在disable有效的情况下，clr_flt以及en_gate都可以清除fault ：包括标记，gate driver 以及nfault信号
+	5.2.16 等待10ms的时间用于nfault和gate_driver的检测，然后都寄存器0x1~0x4，fault标记不变，然后再等10ms
+	5.2.17 目前fault的功能处于disable状态，将之重新enable，并再次检查寄存器0x1~0x4上是否产生对应的fault标记[应该依旧有错误标记]
+	5.2.18 等待10ms之后继续测试
+	5.2.19 撤掉fault源，接下来测试在fault源撤销的情况下，disable功能是否能清除掉fault，经过测试DRV8305是不能清除
+	5.2.20 等待10ms，再次读取0x1~0x4，错误标记依旧存在，然后disable pvdd_uvlo_2，等待5个周期之后检查fault标记
+	5.2.21 等待10ms测试时间，然后尝试在nfault=0，fault源已经被撤销，fault功能被disable的情况下清除fault
+	5.2.22 发送clr_flt，然后检测标记，证明能清除fault
+	5.2.23 等待50ms，再检查一次0x1~0x4，没有任何错误
+	5.2.22 本项测试完成
+
+	}
+}	
+{06 测试用例名称 : t3_06 
+6.1 测试要点     : 
+    测试基本的fault disable对fault的影响 : 	disable gdrv fault[此disable会影响6个vgs的fault]
+	#注意 ：
+	#在disable vgs xx的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+	"----Error   : 1.在fault被disable的情况下可以清除fault还没有被测试，RTL还未修改，tc还未修改[20170327]"
+	"----Success : 1."
+6.2 测试步骤     : 
+	{
+    6.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    6.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态，将ostd的检测写成disable状态
+    6.2.3  执行nfault的常拉高检测，开启gate driver的检测，检查寄存器0x1~0x4之后直接设置vgs_ha的fault源[nfault信号不会拉低]	
+    6.2.4  检查寄存器0x1~0x4上是否产生对应的fault标记
+	6.2.5  等待50ms的时间用于nfault和gate_driver的检测
+	6.2.6  再次检查寄存器0x1~0x4上是否产生对应的fault标记
+	6.2.7  关闭nfault的常高检测，然后force gate driver的检测为0[因为接下来会产生fault]
+	#下面的6.2.8为了证明在源存在情况下直接去掉disable，会自动产生fault
+	6.2.8  使能vgs_ha功能，检查在5个系统周期内是否有拉低nfault，拉低则说明产生了fault错误，没有检测到则说明此项测试出错，直接finish
+	6.2.9  release前面的fault之后，主动开启gate driver检测使能，持续监控gate driver处于关闭状态、nfault保持低电平[检测间隔目前为10ns]
+	6.2.10 对PWM输入持续送入激励，验证gate driver在此期间一直输出低电平
+	6.2.11 然后读寄存器0x1~0x4上是否产生对应的fault标记[此时应该产生fault]
+	6.2.12 等待50ms的时间用于nfault和gate_driver的检测
+	6.2.13 在源不撤销的情况下重新disable vgs_ha检测[认为在fault存在的情况下disable fault的检测，fault不能被clear]
+	6.2.14 再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	#上面的6.2.14~6.2.16证明了在fault源还在的情况下，fault不能被disable功能清除，但是当disable之后可以被清除动作清除
+	6.2.15 在disable有效的情况下，clr_flt以及en_gate都可以清除fault ：包括标记，gate driver 以及nfault信号
+	6.2.16 等待10ms的时间用于nfault和gate_driver的检测，然后都寄存器0x1~0x4，fault标记不变，然后再等10ms
+	6.2.17 目前fault的功能处于disable状态，将之重新enable，并再次检查寄存器0x1~0x4上是否产生对应的fault标记[应该依旧有错误标记]
+	6.2.18 等待10ms之后继续测试
+	6.2.19 撤掉fault源，接下来测试在fault源撤销的情况下，disable功能是否能清除掉fault，经过测试DRV8305是不能清除
+	6.2.20 等待10ms，再次读取0x1~0x4，错误标记依旧存在，然后disable vgs_ha，等待5个周期之后检查fault标记
+	6.2.21 等待10ms测试时间，然后尝试在nfault=0，fault源已经被撤销，fault功能被disable的情况下清除fault
+	6.2.22 发送clr_flt，然后检测标记，证明能清除fault
+	6.2.23 等待50ms，再检查一次0x1~0x4，没有任何错误
+	#接下来继续测试la、hb、lb、hc和lc，它们的表现全部一样，只是falg不一样
+	6.2.24 将fault源改为vgs la，然后执行6.2.1~6.2.23	
+	6.2.25 将fault源改为vgs hb，然后执行6.2.1~6.2.23	
+	6.2.26 将fault源改为vgs lb，然后执行6.2.1~6.2.23	
+	6.2.27 将fault源改为vgs hc，然后执行6.2.1~6.2.23	
+	6.2.28 将fault源改为vgs lc，然后执行6.2.1~6.2.23	
+		
+	6.2.29 本项测试完成
+
+	}
+}	
+{07 测试用例名称 : t3_07 
+7.1 测试要点     : 
+    测试基本的fault disable对fault的影响 : 	disable sns ocp fault[此disable会影响3个sns的ocp fault]
+	#注意 ：
+	#在disable sns ocp的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+	"----Error   : 1.在fault被disable的情况下可以清除fault还没有被测试，RTL还未修改，tc还未修改[20170327]"
+	"----Success : 1."
+7.2 测试步骤     : 
+	{
+    7.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    7.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态，将ostd的检测写成disable状态
+    7.2.3  执行nfault的常拉高检测，开启gate driver的检测，检查寄存器0x1~0x4之后直接设置sns ocp的fault源[nfault信号不会拉低]	
+    7.2.4  检查寄存器0x1~0x4上是否产生对应的fault标记
+	7.2.5  等待50ms的时间用于nfault和gate_driver的检测
+	7.2.6  再次检查寄存器0x1~0x4上是否产生对应的fault标记
+	7.2.7  关闭nfault的常高检测，然后force gate driver的检测为0[因为接下来会产生fault]
+	#下面的7.2.8为了证明在源存在情况下直接去掉disable，会自动产生fault
+	7.2.8  使能sns ocp功能，检查在5个系统周期内是否有拉低nfault，拉低则说明产生了fault错误，没有检测到则说明此项测试出错，直接finish
+	7.2.9  release前面的fault之后，主动开启gate driver检测使能，持续监控gate driver处于关闭状态、nfault保持低电平[检测间隔目前为10ns]
+	7.2.10 对PWM输入持续送入激励，验证gate driver在此期间一直输出低电平
+	7.2.11 然后读寄存器0x1~0x4上是否产生对应的fault标记[此时应该产生fault]
+	7.2.12 等待50ms的时间用于nfault和gate_driver的检测
+	7.2.13 在源不撤销的情况下重新disable sns ocp检测[认为在fault存在的情况下disable fault的检测，fault不能被clear]
+	7.2.14 再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	#上面的7.2.14~7.2.16证明了在fault源还在的情况下，fault不能被disable功能清除，但是当disable之后可以被清除动作清除
+	7.2.15 在disable有效的情况下，clr_flt以及en_gate都可以清除fault ：包括标记，gate driver 以及nfault信号
+	7.2.16 等待10ms的时间用于nfault和gate_driver的检测，然后都寄存器0x1~0x4，fault标记不变，然后再等10ms
+	7.2.17 目前fault的功能处于disable状态，将之重新enable，并再次检查寄存器0x1~0x4上是否产生对应的fault标记[应该依旧有错误标记]
+	7.2.18 等待10ms之后继续测试
+	7.2.19 撤掉fault源，接下来测试在fault源撤销的情况下，disable功能是否能清除掉fault，经过测试DRV8305是不能清除
+	7.2.20 等待10ms，再次读取0x1~0x4，错误标记依旧存在，然后disable sns ocp，等待5个周期之后检查fault标记
+	7.2.21 等待10ms测试时间，然后尝试在nfault=0，fault源已经被撤销，fault功能被disable的情况下清除fault
+	7.2.22 发送clr_flt，然后检测标记，证明能清除fault
+	7.2.23 等待50ms，再检查一次0x1~0x4，没有任何错误
+	7.2.24 将fault源改为sns b ocp，然后执行7.2.1~7.2.23	
+	7.2.25 将fault源改为sns c ocp，然后执行7.2.1~7.2.23
+	7.2.26 本项测试完成
+
+	}
+}	
+{08 测试用例名称 : t3_08 
+8.1 测试要点     : 
+    测试基本的fault disable对fault的影响 : 	disable_vreg_pwrgd fault[此disable仅仅影响pwrgd管脚]
+	#注意 ：
+	#在disable vreg uv的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+	#经过测试，disable对pwrgd的影响响应时间是172ns
+8.2 测试步骤     : 
+	{
+    8.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    8.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+	8.2.3  使能vreg pwrgd fault，接下来测试vreg欠压的正常功能【前面的测试中可能只有nfault以及gate driver的检测，不包含pwrgd】
+	8.2.4  开启nfault拉高的检测，然后开始发送pwm，并检查10ms，关闭gate driver的检测
+	8.2.5  发起VREG UV条件，并延时tDLY，接下来会马上拉低nfault以及pwrgd
+	8.2.6  开始检查nfault拉低，开始检查pwrgd拉低[至少52us，最多60us]，重新打开gate driver的检测[一直off]
+	8.2.7  先读取以下寄存器0x1~0x4的值，看是否有fault，等待10us之后去掉fault source，然后准备清除fault
+	8.2.8  检查此时pwrgd和nfault都没有拉高，因为fault还没有清除，所以nfault没拉高，因为还没满56us，所以pwrgd还没拉高
+	8.2.9  先读取以下寄存器0x1~0x4的值，看是否有fault，再等待10us，然后关闭gate driver的检测，然后关闭nfault的常低检测
+	8.2.10 发送clr_flt清除fault，等待tDLY时间
+	8.2.11 此时gate driver应该被重新打开，nfault应该被拉高，开启这两者的检测
+	8.2.12 等待100us，等pwrgd的检测完毕[正确的范围]
+	#接下来测试在56us之内不撤销源，则pwrgd不拉高，在56us之后一旦撤销源则拉高pwrgd
+	8.2.13 开启nfault拉高的检测，然后开始发送pwm，并检查10ms，关闭gate driver的检测
+	8.2.14 发起VREG UV条件，并延时tDLY，接下来会马上拉低nfault以及pwrgd
+	8.2.15 开始检查nfault拉低，开始检查pwrgd拉低[至少52us，最多60us]，重新打开gate driver的检测[一直off]
+	8.2.16 等待200us之后，关闭pwrgd的低电平检测，因为接下来一旦去掉fault source则会拉高pwrgd	
+	8.2.17 先读取以下寄存器0x1~0x4的值，看是否有fault，然后去掉fault source，然后准备清除fault
+	8.2.18 等待tDLY时间,然后开启pwrgd的高检测
+	8.2.19 等待200us之后，关闭gate driver的输出检测，准备清除fault，结束nfault的常低检测
+	8.2.20 发送clr_flt清除fault，等待tDLY时间
+	8.2.21 此时gate driver应该被重新打开，nfault应该被拉高，开启这两者的检测，然后检查寄存器0x1~0x4
+	8.2.22 等待200us，关闭pwrgd的高检测，然后开始下一项测试
+	#接下来继续测试在56us清除然后立即设置源[两个操作处于56us之内]，然后又清除...设置fault源，循环N次，pwrgd应该一致保持低
+	#最后一次给源之后开始计算，并开始pwrgd的周期检测[56us开始计数]，然后56us内拉低fault源并clr_flt，看pwrgd是否再继续拉低56us
+	8.2.23 等tDLY之后开启pwrgd的低检测，当8.2.24中的fault源发送之后pwrgd就会拉低
+	8.2.24 与8.2.23的delay一起开始关闭fault的常高检测，关闭gate driver检测，发起vreg的欠压source
+	8.2.25 等待tDLY之后开启nfault的常低检测，同时开启gate driver的检测
+	8.2.26 等待10us的检测时间，撤销fault源，关闭gate driver的检测，关闭nfault的常低检测[pwrgd保持低]
+	8.2.27 使用clr_flt来清除fault，等待tDLY之后，开启nfault的常高检测，开启gate driver的检测
+	8.2.28 随机等待一定时间，但是要保证两次source源拉高之间的间隔小于56us
+	8.2.29 循环执行8.2.24~8.2.28，次数100次
+	8.2.30 停止pwrgd的常低检测，关闭nfault常高检测，关闭gate driver的检测
+	8.2.31 发起fault源，等待tDLY时间，开启nfault的常低检测，开启pwrgd的拉低56us的检测
+	8.2.32 开启gate driver的检测，检查寄存器0x1~0x4寄存器，然后等待200us
+	#下面测试disable对fault的影响，8.2.32测试完毕之后，芯片处于fault enable，fault源有效，pwrgd拉低，nfault拉低，gate driver关闭的状态
+	8.2.33 在源不撤销的情况下重新disable_vreg_pwrgd[认为在fault存在的情况下disable fault的检测，fault不能被clear，但是pwrgd会拉高]
+	8.2.34 在disable有效的情况下，clr_flt以及en_gate不会对芯片造成任何影响["因为它只影响pwrgd信号"]
+	8.2.35 判断pwrgd是否拉高，并再次检查寄存器0x1~0x4上是否产生对应的fault标记[因为此时fault"不"会被disable清除，因此依旧会有fault标记]
+	8.2.36 重新使能vreg pwrgd，检查pwrgd是否拉低，此时的fault依旧保持
+	#下面测试fault的清除，在前面的fault测试其实已经测试过nfault和相关的错误标记，但是没有检查pwrgd信号，这里把pwrgd信号检查一下
+	8.2.37 测试clr_flt，en_gate等不会清除掉fault，等待10ms之后继续测试
+	8.2.38 撤掉fault源，pwrgd会立即拉高
+	8.2.39 再次读取0x1~0x4，错误标记依旧存在，然后disable vreg uv，等待5个周期之后检查fault标记
+	8.2.40 等待10ms测试时间，然后尝试在nfault=0，fault源已经被撤销，fault功能被disable的情况下清除fault
+	8.2.41 发送clr_flt，然后检测标记，证明能清除fault
+	8.2.42 等待50ms，再检查一次0x1~0x4，没有任何错误
+	8.2.43 本项测试完成
+
+	}
+}	
+{09 测试用例名称 : t3_09 
+9.1 测试要点     : 
+    根据datasheet的说明进行vds ocp disable的测试
+	#注意 ：
+	#在disable pvdd_uvlo_2的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+9.2 测试步骤     : 
+	{
+	}
+}
+{10 测试用例名称 : t3_10 
+10.1 测试要点     : 
+    测试其他没有在datasheet上注明的值哪些是disable
+	#注意 ：
+	#在disable pvdd_uvlo_2的时候，因为watch dog默认也是disable的，所以也要注意控制watch dog的disable，不能将之enable，否者影响测试
+	#在产生fault的情况下，fault不能被disable功能清除，因此下面的测试步骤经过了修改，前一版本的disable会清除fault
+10.2 测试步骤     : 
+	{
+	}
+}
+{11 测试用例名称 : t3_11 
+11.1 测试要点     : 
+    测试watch dog的基本功能 : 设置不同的watch dog delay对watch dog的fault进入时间有不同的影响
+	#期间有一个随机的从watch dog fault生效到清除的一个随机事件，这个随机时间可以看到当小于56us时，pwrgd是否保持56us
+	#测试CLEAR FLAUT对watch dog的清除
+11.2 测试步骤     : 
+	{
+	11.2.1  执行por，并检查所有寄存器的初始值
+	11.2.2  拉高en_gate，然后设置一些初始值
+	11.2.3  设置watch dog delay的值[第一次循环为10ms]，并同时使能watch dog
+	11.2.4  在watch dog delay时间没到之前，gate driver都是打开的
+	11.2.5  在11.2.4开始执行的时候开始执行本行命令之后的命令 ：先读一下寄存器0x9，此时寄存器的值应该没有变化
+	11.2.6  和11.2.5的读0x9同时开始nfault信号和pwrgd信号的检测 ：nfalut在watch dog delay满之后一定会拉低[watch dog delay*1.01]
+	        pwrgd信号和nfault信号同时拉低，并且拉低至少56us，如果提前拉高，则错误，如果拉低超过60us，也错误
+	11.2.7  和11.2.5以及11.2.6同时开始进行delay计时watch dog delay time的时间，此时应该还没有到watch dog的delay时间
+	11.2.8  force掉gate driver的输出检测，然后等待nfault拉低
+	11.2.9  开启gate driver的关闭检测，release掉前面的force，并把gate driver的输出检测打开
+	11.2.10 开始nfault的常低检测
+	11.2.11 读寄存器0x9，判断寄存器的值，此时watch的delay没有改变，但是watch dog en则被拉低
+	11.2.12 读寄存器0x1~0x4，然后停止nfault的常低检测，准备清除watch dog
+	11.2.13 读写寄存器0x9，用clr_flt来清除watch dog，接下来watch dog的fault会被清除，pwrgd保持高，nfault拉高，gate driver会开启
+	11.2.14 做好gate driver从关闭到开启的检测措施，然后开始检查nfault的常高，然后判断pwrgd是否是高[目前pwrgd检测是加在nfault]
+	11.2.15 等待10ms
+	11.2.16 将watch dog delay时间设置为20ms，50ms，100ms后，分别执行11.2.3~11.2.15
+	11.2.17 循环执行以上步骤32次，增加清除watch dog时间的随机性
+	11.2.18 本项测试完成
+	}
+11.3 测试结果
+	2017-03-28 : 出现了gate driver检测的问题[竞争?]，暂时将pwm的最小占空比调到了1，后面再解决这个问题
+}
+{12 测试用例名称 : t3_12 
+12.1 测试要点     : 
+    测试watch dog的基本功能 : 设置不同的watch dog delay对watch dog的fault进入时间有不同的影响
+	#期间有一个随机的从watch dog fault生效到清除的一个随机事件，这个随机时间可以看到当小于56us时，pwrgd是否保持56us
+	#测试en_gate对watch dog的清除
+12.2 测试步骤     : 
+	{
+	12.2.1  执行por，并检查所有寄存器的初始值
+	12.2.2  拉高en_gate，然后设置一些初始值
+	12.2.3  设置watch dog delay的值[第一次循环为10ms]，并同时使能watch dog
+	12.2.4  在watch dog delay时间没到之前，gate driver都是打开的
+	12.2.5  在12.2.4开始执行的时候开始执行本行命令之后的命令 ：先读一下寄存器0x9，此时寄存器的值应该没有变化
+	12.2.6  和12.2.5的读0x9同时开始nfault信号和pwrgd信号的检测 ：nfalut在watch dog delay满之后一定会拉低[watch dog delay*1.01]
+	        pwrgd信号和nfault信号同时拉低，并且拉低至少56us，如果提前拉高，则错误，如果拉低超过60us，也错误
+	12.2.7  和12.2.5以及12.2.6同时开始进行delay计时watch dog delay time的时间，此时应该还没有到watch dog的delay时间
+	12.2.8  force掉gate driver的输出检测，然后等待nfault拉低
+	12.2.9  开启gate driver的关闭检测，release掉前面的force，并把gate driver的输出检测打开
+	12.2.10 开始nfault的常低检测
+	12.2.11 读寄存器0x9，判断寄存器的值，此时watch的delay没有改变，但是watch dog en则被拉低
+	12.2.12 读寄存器0x1~0x4，然后停止nfault的常低检测，准备清除watch dog
+	12.2.13 读写寄存器0x9，用en_gate低脉冲来清除watch dog，接下来watch dog的fault会被清除，pwrgd保持高，nfault拉高，gate driver会开启
+	12.2.14 做好gate driver从关闭到开启的检测措施，然后开始检查nfault的常高，然后判断pwrgd是否是高[目前pwrgd检测是加在nfault]
+	12.2.15 等待10ms
+	12.2.16 将watch dog delay时间设置为20ms，50ms，100ms后，分别执行12.2.3~12.2.15
+	12.2.17 循环执行以上步骤32次，增加清除watch dog时间的随机性
+	12.2.18 本项测试完成
+	}
+12.3 测试结果
+	2017-03-28 : 出现了gate driver检测的问题[竞争?]，暂时将pwm的最小占空比调到了1，后面再解决这个问题
+}
+{13 测试用例名称 : t3_13 
+13.1 测试要点     : 
+    测试watch dog的基本功能 : 设置不同的watch dog delay对watch dog的fault进入时间有不同的影响
+	#期间有一个随机的从watch dog fault生效到清除的一个随机事件，这个随机时间可以看到当小于56us时，pwrgd是否保持56us
+	#测试在watch dog delay时间内连续读地址0x1，则不会watch dog fault生效，一旦停止，则会watch dog生效
+	#测试当watch生效后，读0x1不会再清除watch dog fault
+	#测试watch dog的delay随机
+13.2 测试步骤     : 
+	{
+	13.2.1  执行por，并检查所有寄存器的初始值
+	13.2.2  拉高en_gate，然后设置一些初始值
+	13.2.3  设置watch dog delay的值，delay值的顺序随机生成，并同时使能watch dog
+	13.2.4  在watch dog delay时间没到之前，gate driver都是打开的，这个时候读寄存器0x1，则watch dog一直不会生效，总共执行30个watch dog delay时间
+	13.2.5  在13.2.4开始执行的时候同时开始gate driver的检测，并且一直检测nfault和pwrgd都不会拉低
+	13.2.6  前面连续读0x1 30个watch dog delay时间后，关闭gate driver的检测，因为接下来gate driver可能会在某个时间关闭，很难提前判断gate driver会关闭，
+	        因此提前关闭检测，关闭pwrgd的检测
+	13.2.7  等nfault拉低，然后开始gate driver的关闭检测，同时开始检测pwrgd信号[拉低56us]
+	13.2.8  读几次寄存器0x1，并不需要判断值，直接13.2.7中的检测有没有受影响即可
+	13.2.9  使用clear fault来清除watch dog产生的fault
+	13.2.10 检查一下gate driver是否打开，nfault是否拉高，pwrgd是否为高
+	13.2.11 停止gate driver的输入
+	13.2.12 重新随机选择watch dog delay，然后执行13.2.3~13.2.11 执行次数为32次
+	13.2.13 本项测试完成
+	}
+13.3 测试结果
+	2017-03-28 : 暂时将pwm的最小占空比调到了1，后面再解决这个问题，除了这个问题外本case pass
+	
+}
+#经过测试，当fault源已经撤销，进入后退出sleep可以将fault清除
+#
+#____________________________________________________END__________________________________________________________________
+
+
+#PART B : Warning测试 - t3_20 ~ t3_29
+{20 测试用例名称 : t3_20 
+20.1 测试要点     : 
+	测试0.4中提到的4个warning的基本特性[状态寄存器的清除]，warning源随机生成，然后同时拉低
+	#后续还会测试其他清除方式，这些清除方式是在芯片手册上没有提到的
+20.2 测试步骤     : 
+	{
+    20.2.1  执行芯片POR，将所有的错误输入设置为无效值[0]
+    20.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+	20.2.3  随机生成warning源，约束warning源!=0，保证每个值能随机到
+	20.2.4  开启nfault toggle检测以及gate driver的检测，gate driver不会关闭，并等待50ms
+	20.2.5  验证两次write 0x1不会清除warning，验证读写两次0x2~0x4都不会清除warning
+	20.2.6  等待50ms的测试时间，接下来准备用读0x1来清除warning，所以先要把nfault的检查进程停止
+	20.2.7	读取寄存器0x1，寄存器的值保持有错误的标记，nfault会在一定时间后拉高
+	20.2.8	等待10ms再次读取寄存器0x1，错误标记保持
+	20.2.9  去掉所有的warning源
+	20.2.10 再次验证12.2.5中的操作不会清除warning，然后等待100us
+	20.2.11 读0x1，读出的值应该是有warning
+	20.2.12	读出的值应该是没有任何warning，错误已经被20.2.11中的读清除
+	20.2.13 再次读0x1，读出的值应该是没有任何warning，错误已经被20.2.11中的读清除
+	20.2.14 fault拉高检测禁止，等待tDLY时间
+	20.2.15 循环执行20.2.3~20.2.14，循环次数总共16次
+	}
+}
+{21 测试用例名称 : t3_21 
+21.1 测试要点     : 
+	测试0.4中提到的4个warning的基本特性[在warning源还在的时候不清除warning，在撤销之后再清除]，warning源随机生成，然后同时拉低
+	#后续还会测试其他清除方式，这些清除方式是在芯片手册上没有提到的
+21.2 测试步骤     : 
+	{
+    21.2.1  执行芯片POR，将所有的错误输入设置为无效值[0]
+    21.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+	21.2.3  随机生成warning源，约束warning源!=0，保证每个值能随机到
+	21.2.4  开启nfault toggle检测以及gate driver的检测，gate driver不会关闭，并等待50ms
+	21.2.5  验证两次write 0x1不会清除warning，验证读写两次0x2~0x4都不会清除warning
+	21.2.6  去掉所有的warning源
+	21.2.7  验证写0x1两次，读写0x2~0x4的操作不会清除warning，然后等待100us
+	21.2.8  停止nfault的检测，然后读0x1
+	21.2.9	读出的值应该有warning
+	21.2.10 等待tDLY时间，然后开始nfault的拉高检测
+	21.2.11 再次写寄存器0x1，读出的值应该是没有任何warning，错误已经被21.2.8中的读清除
+	21.2.12 读寄存器0x1，应该没有错误。最后fault拉高检测禁止，等待tDLY时间
+	21.2.13 循环执行21.2.3~21.2.12，循环次数总共16次
+	}
+}
+{22 测试用例名称 : t3_22 
+22.1 测试要点     : 
+	测试0.4中提到的4个warning的在datasheet中没有提到的清除方式[clr_flt]，warning源随机生成，然后同时拉低
+	#1.验证clr_flt对warning的清除效果一模一样
+	#2.本次主要验证在warning错误源还在的情况下的清除以及warning已经撤销的情况下清除
+22.2 测试步骤     : 
+	{
+    22.2.1  执行芯片POR，将所有的错误输入设置为无效值[0]
+    22.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+	22.2.3  随机生成warning源，约束warning源!=0，保证每个值能随机到
+	22.2.4  开启nfault toggle检测以及gate driver的检测，gate driver不会关闭，并等待50ms
+	22.2.5  写寄存器0x1看是否有错误标记
+	#注意 ： 以下两点不在本case中进行测试，而在spi的case中作为异常帧的测试
+	#22.2.6	写寄存器0x9，但是CLT_FLT以及WATCH_DOG使能位一直保持0，将所有数据循环完成，证明写其他数据不能清除错误
+	#22.2.7  读寄存器0x9，验证读0x9不会清除错误
+	22.2.6  停止nfault的检测，因为接下来一旦发送clr_flt，就会清除掉nfault
+	22.2.7  发出clr_flt，等待tDLY之后，开始检查nfault的拉高状态
+	22.2.8  写0x1，读0x9，再次写0x9，都不会对warning标记造成影响[不能清除掉warning标记]，测试50ms
+	22.2.7  撤销warning源，然后等待tDLY
+	22.2.8  两次写寄存器0x1，应该都包含错误标记
+	22.2.9  写寄存器0x9，这个时候会清除掉warning标记，等待tDLY
+	22.2.10 写寄存器0x1，发现warning的错误标记被完全清楚
+	22.2.11 等待5ms，停止gate driver的检测，准备下一循环测试
+	22.2.12 将clr flt的发送设置在warning条件撤销之后，再warning源还在的情况下不发送clr_flt
+	22.2.13	在22.2.12发送clr_flt会直接清除nfault和warning标记，然后直接写0x1会读到全0值
+	22.2.14 重复执行22.2.3~22.2.13，随机测试所有的warning
+	22.2.15 本项测试完成
+	}
+22.3 测试结果
+	2017-03-28 : 测试Pass
+}
+{23 测试用例名称 : t3_23
+23.1 测试要点     : 
+	测试0.4中提到的4个warning的在datasheet中没有提到的清除方式[en_gate]，warning源随机生成，然后同时拉低
+	#1.验证en_gate对warning的清除效果一模一样
+	#2.本次主要验证在warning错误源已经撤销的情况下的清除以及warning已经撤销的情况下清除
+23.2 测试步骤     : 
+	{
+    22.2.1  执行芯片POR，将所有的错误输入设置为无效值[0]
+    22.2.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+	22.2.3  随机生成warning源，约束warning源!=0，保证每个值能随机到
+	22.2.4  开启nfault toggle检测以及gate driver的检测，gate driver不会关闭，并等待50ms
+	22.2.5  写寄存器0x1看是否有错误标记
+	#注意 ： 以下两点不在本case中进行测试，而在spi的case中作为异常帧的测试
+	#22.2.6	写寄存器0x9，但是CLT_FLT以及WATCH_DOG使能位一直保持0，将所有数据循环完成，证明写其他数据不能清除错误
+	#22.2.7  读寄存器0x9，验证读0x9不会清除错误
+	22.2.6  停止nfault的检测，因为接下来一旦发送en_gate低脉冲，就会清除掉nfault
+	22.2.7  发出en_gate低脉冲，等待tDLY之后，开始检查nfault的拉高状态
+	22.2.8  写0x1，读0x9，再次写0x9，都不会对warning标记造成影响[不能清除掉warning标记]，测试50ms
+	22.2.7  撤销warning源，然后等待tDLY
+	22.2.8  两次写寄存器0x1，应该都包含错误标记
+	22.2.9  写寄存器0x9，这个时候会清除掉warning标记，等待tDLY
+	22.2.10 写寄存器0x1，发现warning的错误标记被完全清楚
+	22.2.11 等待5ms，停止gate driver的检测，准备下一循环测试
+	22.2.12 将en_gate低脉冲的发送设置在warning条件撤销之后，再warning源还在的情况下不发送en_gate低脉冲
+	22.2.13	在22.2.12发送clr_flt会直接清除nfault和warning标记，然后直接写0x1会读到全0值
+	22.2.14 重复执行22.2.3~22.2.13，随机测试所有的warning
+	#注意 ： 在以上测试中，发送en_gate的时候会临时关闭gate driver，所以这段时间需要跳过
+	22.2.15 本项测试完成
+	}
+23.3 测试结果
+	2017-03-28 : 今天测试结果为en_gate在源未撤销的时候会拉高nfault，但是en_gate这个脉冲消失后，nfault又会重新toggle
+}
+
+#PART C : 其他测试 - t3_30 ~ t3_xx
+
+{30 测试用例名称 : t3_30 
+10.1 测试要点     : 
+    测试temperature falg 1的基本功能	
+10.1 测试步骤     : 
+    10.3.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    10.3.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+    10.3.3  设置en_gate的初始值为1，并检测nfault管脚会一直保持高，开始gate_driver的测试
+    10.3.3  开始测试在源未撤销的情况下多种清除手段无法清除temp_flag1的错误标记
+    10.3.4  写寄存器0x1~0x4各2次共8次，读寄存器0x1~0x4各两次共8次
+	10.3.5  用CLR_FLT清除后读取0x1，标记依旧保持
+	10.3.6  拉低en_gate，检测到gate_driver被关闭，在此期间读两次0x1，temp_flag1的标记保持
+	10.3.7  等100us之后拉高en_gate，再次读两次0x1，temp_flag1的标记保持
+	10.3.8  撤销temperature flag 1的源
+    10.3.9  写寄存器0x1两次，返回值应该不包含任何错误标记
+    10.3.9  读寄存器0x1一次，返回值应该不包含任何错误标记
+	10.3.10 本项测试完成
+}
+{31 测试用例名称 : t3_31 
+11.2 测试要点     : 
+    测试temperature falg 2的基本功能	
+11.3 测试步骤     : 
+    11.3.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    11.3.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+    11.3.3  设置en_gate的初始值为1，并检测nfault管脚会一直保持高，开始gate_driver的测试
+    11.3.3  开始测试在源未撤销的情况下多种清除手段无法清除temp_flag2的错误标记
+    11.3.4  写寄存器0x1~0x4各2次共8次，读寄存器0x1~0x4各两次共8次
+	11.3.5  用CLR_FLT清除后读取0x1，标记依旧保持
+	11.3.6  拉低en_gate，检测到gate_driver被关闭，在此期间读两次0x1，temp_flag2的标记保持
+	11.3.7  等100us之后拉高en_gate，再次读两次0x1，temp_flag2的标记保持
+	11.3.8  撤销temperature flag 2的源
+    11.3.9  写寄存器0x1两次，返回值应该不包含任何错误标记
+    11.3.9  读寄存器0x1一次，返回值应该不包含任何错误标记
+	11.3.10 本项测试完成
+}
+{32 测试用例名称 : t3_32 
+12.1 测试用例名称 : t3_10
+12.2 测试要点     : 
+12   测试temperature falg 3的基本功能	
+12.3 测试步骤     : 
+    12.3.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    12.3.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+    12.3.3  设置en_gate的初始值为1，并检测nfault管脚会一直保持高，开始gate_driver的测试
+    12.3.3  开始测试在源未撤销的情况下多种清除手段无法清除temp_flag3的错误标记
+    12.3.4  写寄存器0x1~0x4各2次共8次，读寄存器0x1~0x4各两次共8次
+	12.3.5  用CLR_FLT清除后读取0x1，标记依旧保持
+	12.3.6  拉低en_gate，检测到gate_driver被关闭，在此期间读两次0x1，temp_flag3的标记保持
+	12.3.7  等100us之后拉高en_gate，再次读两次0x1，temp_flag3的标记保持
+	12.3.8  撤销temperature flag 3的源
+    12.3.9  写寄存器0x1两次，返回值应该不包含任何错误标记
+    12.3.9  读寄存器0x1一次，返回值应该不包含任何错误标记
+	12.3.10 本项测试完成
+}
+{33 测试用例名称 : t3_33 
+13.1 测试用例名称 : t3_11
+13.2 测试要点     : 
+     测试temperature falg 4的基本功能	
+13.3 测试步骤     : 
+    13.3.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+    13.3.2  执行寄存器的默认值读检测，保证寄存器处于default状态
+    13.3.3  设置en_gate的初始值为1，并检测nfault管脚会一直保持高，开始gate_driver的测试
+    13.3.3  开始测试在源未撤销的情况下多种清除手段无法清除temp_flag4的错误标记
+    13.3.4  写寄存器0x1~0x4各2次共8次，读寄存器0x1~0x4各两次共8次
+	13.3.5  用CLR_FLT清除后读取0x1，标记依旧保持
+	13.3.6  拉低en_gate，检测到gate_driver被关闭，在此期间读两次0x1，temp_flag4的标记保持
+	13.3.7  等100us之后拉高en_gate，再次读两次0x1，temp_flag4的标记保持
+	13.3.8  撤销temperature flag 4的源
+    13.3.9  写寄存器0x1两次，返回值应该不包含任何错误标记
+    13.3.9  读寄存器0x1一次，返回值应该不包含任何错误标记
+	13.3.10 本项测试完成	
+}	
+
+
+
+#下面是测试记录等附加信息
+{99	测试记录 : 用于基本的测试记录管理
+99.1 未测试Feature记录
+	{
+	99.1.1 vds ocp的因为还需要进行进一步的仔细测试，所以还没有进行tesecase的编写，主要是经过芯片测试出来没有report only模式
+	99.1.2 
+
+	}	
+	
+99.2 测试出的问题记录	
+	{
+	#注意 ：
+	#	每一个question都有一个对应的answer，是测试现象以及一些对应的解决方案等，如果没有解决或者解释，则用xxx表示	
+	2017.03.29 
+		Q1 : unpowered system模式的特点？
+		A1 : 能读写寄存器，但是寄存器不能生效?至少就sleep而言，在unpowered下并不能进入sleep，还需要仔细测试下watch dog
+		A2 : 测试出在unpowered system使能watch dog可以生效，而不能进入sleep模式
+		#----#
+		Q2 : 设置sleep delay为0，进sleep模式，需要至少拉低wake 9us，退出sleep，也需要拉高至少wake 9us，因此，进入退出一次sleep，
+		至少有20us左右
+	2017.03.30
+		Q1 : 
+		A1 :
+		
+		Q2 :
+		A2 :
+	}	
+99.3 	
+	
+	
+
+
+
+}
+
+
+#--------------------------------------------------------------------------------------------------------------------------
