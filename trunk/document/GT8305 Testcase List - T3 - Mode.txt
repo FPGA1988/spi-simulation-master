@@ -1,0 +1,569 @@
+#---------------------------------------------GT5238 Testcase List:『Mode』-----------------------------------------------
+
+#_________________________________________________________________________________________________________________________
+{ 0 模式设计概览
+0.1 统计：
+    testcase总数 = PATRA + PARTB + PARTC = 
+{0.2 GT8305的模式/工作状态 : 
+    0.2.1 fault标记处于寄存器 0x2的 :
+        SNS_A_OCP
+        SNS_B_OCP
+        SNS_C_OCP
+        VDS_LC
+        VDS_HC
+        VDS_LB
+        VDS_HB
+        VDS_HA
+        VDS_LA
+    0.2.2 fault标记处于寄存器 0x3 的 :
+        VCPH_OVLO_ABS
+        VCPH_OVLO
+        VCPH_UVLO
+        VCP_LSD_UVLO
+        AVDD_UVLO
+        VREG_UV
+        OTSD
+        PVDD_UVLO2
+    0.2.3 fault标记处于寄存器 0x4 的 :
+        VGS_LC
+        VGS_HC
+        VGS_HB
+        VGS_LB
+        VGS_HA
+        VGS_LA
+    上述的fault类错误都可以用同样的方式来进行设置、清除等
+    0.2.4 其他fault类错误
+        WATCH_DOG
+}
+{0.3  
+    0.3.1 fault的使能/禁止设置处于寄存器0x9的 :
+        ___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_OTSD            BIT10    DISABLE        默认禁止此fault，并且其他的0都代表使能，而这里0代表禁止
+        DISABLE_PVDD_UVLO2      BIT9     ENABLE
+        DISABLE_GRDV_FAULT      BIT8     ENABLE
+        DISABLE_SNS_CLAMP       BIT7     ENABLE
+        DISABLE_SNS_OCP         BIT4     ENABLE
+        DISABLE_SNS_WD          BIT3     DISABLE        默认禁止此fault，并且其他的0都代表使能，而这里0代表禁止
+        ___________________________________________________________________
+        
+        
+    0.3.2 fault的使能/禁止设置处于寄存器0xb的 :
+        ___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_VREG_PWRGD      BIT10    ENABLE   
+        ___________________________________________________________________    
+        
+    0.3.3 fault的使能/禁止设置处于寄存器0xc的 :    
+        #___________________________________________________________________
+        名称                     位       默认          补充
+        DISABLE_VDS_OCP         BIT2-BIT0 ENABLE        VDS_OCP有三种模式:DISABLE,REPORT和SHUTDOWN，仅当 2:0 = 010 的时候
+                                                        处于DISABLE模式
+        #___________________________________________________________________   
+		#补充@2017.03.28 : 关于VDS OCP的测试，后面需要再详细测试下GT8305芯片的对应功能，目前测试出来和datasheet不一致[没有report only模式]
+}    
+{0.4 
+    0.4.1 warning标记处于寄存器 0x1的 :
+		D7	:	PVDD_UVFL
+		D6	:	PVDD_OVFL
+		D4	:	VCHP_UVFL
+		D0	:	OTW
+}   
+#____________________________________________________END__________________________________________________________________
+}
+
+#PART A : Fualt测试 - t3_01~t3_19
+    #注意 ：在disable的开关测试的时候，有以下两点需要特别注意：
+	#	1.disable set了之后需要get
+	#   2.在有fault产生的情况下disable相应的fault，此时判断寄存器0x1~0x4的值不能再用disable的设置，因为此时的disable不影响fault
+#_________________________________________________________________________________________________________________________
+{01 测试用例名称 : t3_01 basic mode switch 1
+1.1 测试要点     : 
+	测试基本的模式/状态跳转 : Idle <-----> Unpowered <-----> Standby，为了能够测试到上电过程中的现象，所以将上电时间增加了1000倍，
+	上升1V要1ms左右
+1.2 测试步骤     : 
+	{
+    1.2.1  拉低en_gate和wake信号，执行por_with_fault
+	#测试平台有两个por的task，一个是不带有任何错误的por，一个类似正常的芯片，在上电的时候带有pvdd的uvlo等错误
+	#1.2.1中为了测试上电之后的unpowered状态以及到standby的调准，所以执行por_with_fault，执行之后，会有fault
+    1.2.2  等por下降沿之后，检测当前状态是否处于unpowered状态，同时查看nfault是否为低
+	1.2.3  读寄存器0x1，应该有错误标记，读写寄存器0x5，看是否能读写正常
+    1.2.3  等pvdd_uvlo1拉低之后，看当前状态是否依旧处于unpowered状态，同时查看nfault是否为高
+    1.2.4  再次读写寄存器0x5，看是否能读写正常
+	1.2.5  等pvdd_uvlo2拉低之后，看当前状态是否切换到IDLE状态，同时查看nfault是否为低
+	1.2.6  此时既有fault又有warning，但是fault源已经撤销，使用clr flt将nfault清到high状态
+	1.2.7  读寄存器0x1，应该没有错误标记[fault和warning都没有]
+	1.2.7  等pvdd_uvfl拉低之后，查看当前状态是否保持IDLE状态，同时查看nfault是否为高
+	1.2.8  读取寄存器0x1，寄存器的值保持有错误的标记
+    1.2.9  再次读取寄存器0x1，寄存器的warning错误标记被上一个读寄存器0x1清除
+	1.2.10 本项测试完成
+	}
+1.3 测试结果 :
+	{
+	2017-03-31 : 第1次测试通过
+	2017-04-01 :  
+	}
+}
+{02 测试用例名称 : t3_02 basic mode switch 2
+2.1 测试要点     : 
+	测试基本的模式/状态跳转 : Unpowered <-----> Standby <-----> Operating <-----> Idle
+	#因为t3_01已经测试了idle到unpowered的transition，因此这里主要测试Unpowered到Operating，以及operating到Standby
+2.2 测试步骤     : 
+	{
+    2.2.1 
+	}
+2.3 测试结果
+	2017-04-06 : 基本的状态切换成功
+}	
+{03 测试用例名称 : t3_03 basic mode switch 3
+3.1 测试要点     : 
+    芯片允许利用几个fault拥有的disable功能，在有错误的情况下依旧处于operating模式，保证motor继续运行
+3.2 测试步骤     : 
+	{
+    3.2.1  执行芯片POR，将所有的fault输入设置为无效值[0]
+	3.2.32 本项测试完成
+	}
+3.3 测试结果
+	2017-xx-xx : "未测试"
+}	
+{04 测试用例名称 : t3_04 sleep mode enter and exit[write reg] : sleep delay = 00/01/10/11 
+4.1 测试要点     : 
+    测试sleep mode的基本特性 : 进入、退出,sleep delay设置为0，本测试主要测试sleep delay = 0时的sleep模式的进入
+	并测试几个模式之间的正常的期望跳转
+	standy <-----> sleep <-----> idle
+	处于standby状态，en_gate和wake都为低，一旦芯片设置了进入sleep后，芯片会在设定的delay之后进入sleep模式
+4.2 测试步骤     : 
+	{
+    4.2.1  执行por，将en_gate和wake信号都拉低
+    4.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    4.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    4.2.4  设置sleep delay为0，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	4.2.5  写寄存器0x9，发送sleep en
+	4.2.6  等待sleep delay时间，sleep delay时间根据sleep的option来进行设定，在原设定的时间的基础上加2us
+	4.2.7  检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	4.2.8  读取所有的寄存器，看是否恢复到default值
+	4.2.9  等待100us，然后进行所有寄存器的读写操作，看是否读出的都是default值
+	4.2.10 再次检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	4.2.11 测试en_gate对sleep模式没有影响 : en_gate拉高或者拉低，读出的sleep标记都是有效的
+	4.2.12 测试低于设定的wake信号最低脉冲[osc_en生效时间]不能退出测试模式，目前设定osc_en拉高的delay为8us
+	4.2.13 测试大于8us的wake高脉冲可以退出sleep模式，进入到standby模式
+	4.2.14 将4.2.4中的sleep delay+1，然后重复执行4.2.4~4.2.13，直到sleep delay的设置测试完1ms的设置
+	4.2.15 本项测试完成
+	}
+4.3 测试结果
+	2017-04-10 : 第一次测试完成，但是对于wake的相关测试可能后续需要补充
+	2017-04-11 : 将所有的delay设置整合到一个case中，还未进行测试
+}	
+{05 测试用例名称 : t3_05 sleep mode enter and exit[wake in] : sleep delay = 00/01/10/11
+5.1 测试要点     : 
+    测试sleep mode的基本特性 : 进入、退出,sleep delay设置为10us，本测试主要测试sleep delay = 10us时的sleep模式的进入
+	并测试几个模式之间的正常的期望跳转
+	standy <-----> sleep <-----> idle
+	处于standby状态，en_gate和wake都为低，一旦芯片设置了进入sleep后，芯片会在设定的delay之后进入sleep模式
+5.2 测试步骤     : 
+	{
+    5.2.1  执行por，将en_gate和wake信号都拉低
+    5.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    5.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    5.2.4  设置sleep delay为10us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	5.2.5  写寄存器0x9，发送sleep en
+	5.2.6  等待sleep delay时间，sleep delay时间根据sleep的option来进行设定，在原设定的时间的基础上加2us
+	5.2.7  检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	5.2.8  读取所有的寄存器，看是否恢复到default值
+	5.2.9  等待100us，然后进行所有寄存器的读写操作，看是否读出的都是default值
+	5.2.10 再次检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	5.2.11 测试en_gate对sleep模式没有影响 : en_gate拉高或者拉低，读出的sleep标记都是有效的
+	5.2.12 测试低于设定的wake信号最低脉冲[osc_en生效时间]不能退出测试模式，目前设定osc_en拉高的delay为8us
+	5.2.13 测试大于8us的wake高脉冲可以退出sleep模式，进入到standby模式
+	5.2.14 本项测试完成
+	}
+4.3 测试结果
+	2017-04-10 : 第一次测试完成，但是对于wake的相关测试可能后续需要补充
+}	
+{06 测试用例名称 : t3_06 sleep mode enter and exit[en gate] : sleep delay = 00/01/10/11
+6.1 测试要点     : 
+    测试sleep mode的基本特性 : 进入、退出,sleep delay设置为50us，本测试主要测试sleep delay = 10us时的sleep模式的进入
+	并测试几个模式之间的正常的期望跳转
+	standy <-----> sleep <-----> idle
+	处于standby状态，en_gate和wake都为低，一旦芯片设置了进入sleep后，芯片会在设定的delay之后进入sleep模式
+6.2 测试步骤     : 
+	{
+    6.2.1  执行por，将en_gate和wake信号都拉低
+    6.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    6.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    6.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	6.2.5  写寄存器0x9，发送sleep en
+	6.2.6  等待sleep delay时间，sleep delay时间根据sleep的option来进行设定，在原设定的时间的基础上加2us
+	6.2.7  检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	6.2.8  读取所有的寄存器，看是否恢复到default值
+	6.2.9  等待100us，然后进行所有寄存器的读写操作，看是否读出的都是default值
+	6.2.10 再次检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	6.2.11 测试en_gate对sleep模式没有影响 : en_gate拉高或者拉低，读出的sleep标记都是有效的
+	6.2.12 测试低于设定的wake信号最低脉冲[osc_en生效时间]不能退出测试模式，目前设定osc_en拉高的delay为8us
+	6.2.13 测试大于8us的wake高脉冲可以退出sleep模式，进入到standby模式
+	6.2.14 本项测试完成
+	}
+6.3 测试结果
+	2017-04-10 : 第一次测试完成，但是对于wake的相关测试可能后续需要补充
+}
+{07 测试用例名称 : t3_07 limp home or fail code operation 
+7.1 测试要点     : 
+    芯片允许利用几个fault拥有的disable功能，在有错误的情况下依旧处于operating模式，保证motor继续运行
+	standy <-----> sleep <-----> idle
+	处于standby状态，en_gate和wake都为低，一旦芯片设置了进入sleep后，芯片会在设定的delay之后进入sleep模式
+7.2 测试步骤     : 
+	{
+    7.2.1  执行por，将en_gate和wake信号都拉低
+    7.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    7.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    7.2.4  设置sleep delay为1ms，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	7.2.5  写寄存器0x9，发送sleep en
+	7.2.6  等待sleep delay时间，sleep delay时间根据sleep的option来进行设定，在原设定的时间的基础上加2us
+	7.2.7  检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	7.2.8  读取所有的寄存器，看是否恢复到default值
+	7.2.9  等待100us，然后进行所有寄存器的读写操作，看是否读出的都是default值
+	7.2.10 再次检查sleep标记是否有效 ： 状态机，sleep，sleep_dly以及osc_en信号都应该是处于sleep模式的状态
+	7.2.11 测试en_gate对sleep模式没有影响 : en_gate拉高或者拉低，读出的sleep标记都是有效的
+	7.2.12 测试低于设定的wake信号最低脉冲[osc_en生效时间]不能退出测试模式，目前设定osc_en拉高的delay为8us
+	7.2.13 测试大于8us的wake高脉冲可以退出sleep模式，进入到standby模式
+	7.2.14 本项测试完成
+	}
+7.3 测试结果
+	2017-04-10 : 第一次测试完成，但是对于wake的相关测试可能后续需要补充
+}	
+{08 测试用例名称 : t3_08 sleep delay change 1 : 1ms -> xxx
+8.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式将之修改，芯片会使用新修改的sleep delay值
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+8.2 测试步骤     : 
+	{
+    8.2.1  执行por，将en_gate和wake信号都拉低
+    8.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    8.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    8.2.4  设置sleep delay为1ms，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	8.2.5  写寄存器0x9，发送sleep en
+	8.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的90%延时内
+	8.2.7  设置sleep delay为随机任意值，假设 ：
+		8.2.7.1 sleep delay设置为11 ，则表示delay不变，等待后续的delay时间满后，判断芯片正常进入sleep模式
+		8.2.7.2	sleep delay设置为非11值，则判断上面的随机等待时间是否大于新设置的delay ：
+			A . 目前等待的时间小于新设置的delay，则需要等待足够的时间才进入sleep
+			B . 如果等待时间已经大于delay，则此时应该立即进入sleep mode  
+	8.2.8  保证8.2.7中的所有delay设置可以随机到[randc]，在重新设定sleep delay的时间点，保证有尽量多的随机值[100次随机]
+	8.2.9  本项测试完成
+	}
+8.3 测试结果
+	2017-04-10 : Warning : 未完成状态机的检测，目前状态机是没有delay，只要设置了en则立刻进sleep状态
+	
+}
+{09 测试用例名称 : t3_09 sleep delay change 1 : 50us -> xxx
+9.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式将之修改，芯片会使用新修改的sleep delay值
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+9.2 测试步骤     : 
+	{
+    9.2.1  执行por，将en_gate和wake信号都拉低
+    9.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    9.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    9.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	9.2.5  写寄存器0x9，发送sleep en
+	9.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的90%延时内
+	9.2.7  设置sleep delay为随机任意值，假设 ：
+		9.2.7.1 sleep delay设置为10 ，则表示delay不变，等待后续的delay时间满后，判断芯片正常进入sleep模式
+		9.2.7.2 sleep delay设置为11 ，则表示delay变大，等待记满1ms之后，判断芯片正常进入sleep模式
+		9.2.7.3	sleep delay设置为小于10值，则芯片会马上进入sleep模式[中间给予1us的缓冲时间]		
+	9.2.8  保证9.2.7中的所有delay设置可以随机到[randc]，在重新设定sleep delay的时间点，保证有尽量多的随机值[100次随机]
+	9.2.9  本项测试完成
+	}
+9.3 测试结果
+	2017-04-10 : "Warning" : 未完成状态机的检测，目前状态机是没有delay，只要设置了en则立刻进sleep状态
+}
+{10 测试用例名称 : t3_10 sleep en change 1 : 1ms
+10.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式修改sleep en，芯片依旧会进入sleep模式，测试的sleep delay为 1ms
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+10.2 测试步骤     : 
+	{
+    10.2.1  执行por，将en_gate和wake信号都拉低
+    10.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    10.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    10.2.4  设置sleep delay为1ms，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，读寄存器，保证寄存器
+	被正确的写入
+	10.2.5  写寄存器0x9，发送sleep en
+	10.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的80%延时内，预留200us用于寄存器的读写测试
+	10.2.7  读写寄存器0x5，证明可以读写
+	10.2.8  读寄存器0x9，确保是10.2.5中写入的值
+	10.2.9  写寄存器0x9，将sleep enable写为0
+	10.2.10 等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	10.2.11 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	10.2.12 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	10.2.13 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	10.2.14 本项测试完成
+	}
+10.3 测试结果
+	2017-04-10 : "Warning" : 未完成测试
+}
+{11 测试用例名称 : t3_11 sleep en change 2 : 50us
+11.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式修改sleep en，芯片不会进入sleep模式，测试的sleep delay为50us
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+	#注意 ： 50us测试和1ms测试的区别在于因为很快会达到sleep delay，所以在设定好后等待的随机事件会缩短，而且不会再过多
+	#的读写寄存器[]
+11.2 测试步骤     : 
+	{
+    11.2.1  执行por，将en_gate和wake信号都拉低
+    11.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    11.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    11.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	11.2.5  写寄存器0x9，发送sleep en
+	11.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	11.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	11.2.8  写寄存器0x9，将sleep enable写为0
+	11.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	11.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	11.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	11.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	11.2.13 本项测试完成
+	}
+11.3 测试结果
+	2017-04-10 : "Warning" : 未完成测试
+}
+
+{12 测试用例名称 : t3_12 random fault + sleep mode
+12.1 测试要点     : 
+    测试在产生fault的情况下进入sleep模式
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+	#注意 ： 50us测试和1ms测试的区别在于因为很快会达到sleep delay，所以在设定好后等待的随机事件会缩短，而且不会再过多
+	#的读写寄存器[]
+12.2 测试步骤     : 
+	{
+    12.2.1  执行por，将en_gate和wake信号都拉低
+    12.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    12.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    12.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	12.2.5  写寄存器0x9，发送sleep en
+	12.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	12.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	12.2.8  写寄存器0x9，将sleep enable写为0
+	12.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	12.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	12.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	12.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	12.2.13 本项测试完成
+	}
+12.3 测试结果
+	2017-04-13 : "Warning" : 未完成测试，测试出nfault在进入sleep mode之后被clear
+}
+{13 测试用例名称 : t3_13 random warning + sleep mode
+13.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式修改sleep en，芯片不会进入sleep模式，测试的sleep delay为50us
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+	#注意 ： 50us测试和1ms测试的区别在于因为很快会达到sleep delay，所以在设定好后等待的随机事件会缩短，而且不会再过多
+	#的读写寄存器[]
+13.2 测试步骤     : 
+	{
+    11.2.1  执行por，将en_gate和wake信号都拉低
+    11.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    11.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    11.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	11.2.5  写寄存器0x9，发送sleep en
+	11.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	11.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	11.2.8  写寄存器0x9，将sleep enable写为0
+	11.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	11.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	11.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	11.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	11.2.13 本项测试完成
+	}
+13.3 测试结果
+	2017-04-10 : "Warning" : 未完成测试
+}
+{14 测试用例名称 : t3_14 random fault + warning + sleep mode
+14.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式修改sleep en，芯片不会进入sleep模式，测试的sleep delay为50us
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+	#注意 ： 50us测试和1ms测试的区别在于因为很快会达到sleep delay，所以在设定好后等待的随机事件会缩短，而且不会再过多
+	#的读写寄存器[]
+14.2 测试步骤     : 
+	{
+    14.2.1  执行por，将en_gate和wake信号都拉低
+    14.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    14.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    14.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	11.2.5  写寄存器0x9，发送sleep en
+	11.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	11.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	11.2.8  写寄存器0x9，将sleep enable写为0
+	11.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	11.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	11.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	11.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	11.2.13 本项测试完成
+	}
+13.3 测试结果
+	2017-04-10 : "Warning" : 未完成测试
+}
+{15 测试用例名称 : t3_15 unpowered
+11.1 测试要点     : 
+    测试在sleep delay达到前通过写寄存器的方式修改sleep en，芯片不会进入sleep模式，测试的sleep delay为50us
+	因为设置sleep delay的最短时间为16个周期，因此，从0us以及10us修改为其他值的情况不需要测试
+	#注意 ： 50us测试和1ms测试的区别在于因为很快会达到sleep delay，所以在设定好后等待的随机事件会缩短，而且不会再过多
+	#的读写寄存器[]
+11.2 测试步骤     : 
+	{
+    11.2.1  执行por，将en_gate和wake信号都拉低
+    11.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    11.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    11.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	11.2.5  写寄存器0x9，发送sleep en
+	11.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	11.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	11.2.8  写寄存器0x9，将sleep enable写为0
+	11.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	11.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	11.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	11.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	11.2.13 本项测试完成
+	}
+11.3 测试结果
+	2017-04-10 : "Warning" : 未完成测试
+}
+
+
+#PARTB : Special case
+{20 测试用例名称 : t3_20 sleep mode switch 1 : special wake
+20.1 测试要点     : 
+	主要对20170412提出的Q3的Sleep状态跳转进行测试 : wake的影响
+20.2 测试步骤     : 
+	{
+    20.2.1  执行por，将en_gate和wake信号都拉低
+    20.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    20.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    20.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	20.2.5  写寄存器0x9，发送sleep en
+	20.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	20.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	20.2.8  写寄存器0x9，将sleep enable写为0
+	20.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	20.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	20.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	20.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	20.2.13 本项测试完成
+	}
+20.3 测试结果
+	2017-04-12 : "Warning" : 未完成测试
+}
+{21 测试用例名称 : t3_21 sleep mode switch 2 : special en_gate
+21.1 测试要点     : 
+	主要对20170412提出的Q3的Sleep状态跳转进行测试 : en_gate的影响
+21.2 测试步骤     : 
+	{
+    21.2.1  执行por，将en_gate和wake信号都拉低
+    21.2.2  等cfg_done之后，检查是否处于standby状态，并检查nfault信号是否拉高，gate driver是否关闭
+    21.2.3  等待100ms的测试时间，然后开始standby到sleep模式的测试	
+    21.2.4  设置sleep delay为50us，然后将寄存器0x5~0x1到0xc写为全0，其中地址0xb不写[防止修改设定的sleep delay]，
+	读寄存器，保证寄存器正确的写入
+	21.2.5  写寄存器0x9，发送sleep en
+	21.2.6  随机等待一段时间，此时间的范围为0~sleep_delay的10%延时内，预留45us用于寄存器的读写测试
+	21.2.7  读寄存器0x9，确保是10.2.5中写入的值
+	21.2.8  写寄存器0x9，将sleep enable写为0
+	21.2.9  等待足够的时间保证设定的sleep delay完成，确保此时没有任何有效的sleep标记 ：状态机，sleep信号以及osc使能
+	21.2.10 等待2ms之后，再次执行sleep标记检测，并读寄存器0x5，读出应该为10.2.7中修改的值
+	21.2.11 确保此时处于standby状态，读取0x6~0xc，确保是之前写入的值[10.2.4中]，而寄存器0xb时修改sleep delay的时候写的值
+	21.2.12 保证10.2.6中的设定修改sleep en的时间点有尽量多的随机值[50次随机]
+	21.2.13 本项测试完成
+	}
+21.3 测试结果
+	2017-04-12 : "Warning" : 未完成测试
+}
+
+#下面是测试记录等附加信息
+{99	测试记录 : 用于基本的测试记录管理
+99.1 未测试Feature记录
+	{
+	99.1.1 vds ocp的因为还需要进行进一步的仔细测试，所以还没有进行tesecase的编写，主要是经过芯片测试出来没有report only模式
+	99.1.2 
+
+	}	
+	
+99.2 测试出的问题记录	
+	{
+	#注意 ：
+	#	每一个question都有一个对应的answer，是测试现象以及一些对应的解决方案等，如果没有解决或者解释，则用xxx表示	
+	2017.03.29 
+		Q1 : unpowered system模式的特点？
+		A1 : 能读写寄存器，但是寄存器不能生效?至少就sleep而言，在unpowered下并不能进入sleep，还需要仔细测试下watch dog
+		A2 : 测试出在unpowered system使能watch dog可以生效，而不能进入sleep模式
+		#----#
+		Q2 : 设置sleep delay为0，进sleep模式，需要至少拉低wake 9us，退出sleep，也需要拉高至少wake 9us，因此，进入退出一次sleep，
+		至少有20us左右
+	2017.04.10
+		Q1 : 关于wake和sleep模式，目前经过测试，在退出测试模式时，需要至少拉高6us才能退出测试模式，那么，需要测试一下在用wake进入
+		测试模式的时候，是够需要wake拉低多长时间才能进入测试模式，目前的设计是只要wake信号能被系统时钟采到就能进入，也就是进入的
+		时候只需要保证拉低1个时钟的wake即可进入
+		A1 : 需要对以上问题进行测试，如果是拉低很短的时间就可以进入测试模式，则和我们目前的设计保持一致，如果也需要几个us，那么我们
+		目前的设计就和DRV8305不一致
+		
+		Q2 :
+		A2 :
+	2017.04.11
+		Q1 : 关于sleep mode的清除作用，今天经过测试，有以下现象 ：
+			1.在有fault以及warning的情况下，进入sleep模式，读出的所有寄存器都是default值，包括状态寄存器
+			2.在有fault的情况下，并且错误源未撤销的情况下，进入然后退出sleep模式，wake拉高后8.5us之后nfault短暂拉高，拉高时间
+		为50~60us
+		A1 : 需要对以上问题进行测试，如果是拉低很短的时间就可以进入测试模式，则和我们目前的设计保持一致，如果也需要几个us，那么我们
+			目前的设计就和DRV8305不一致
+		
+		Q2 : 测试在设置1ms的delay之后再发送命令的现象 ：
+			1.设置1ms之后，先发送sleep en，然后修改sleep en为0，第一次sdo返回0x20，第二次返回0x24
+			2.如果再写一次，第三次返回0x00，1~2不能终止sleep模式的进入，芯片依旧能进入测试模式
+			3.第四次写依旧返回0x00
+			4.将1~3中的后续命令改为写0x5，现象依旧，第三次依旧返回0x00，将第一条命令和第二条命令之间延时很长时间，第二次返回第一
+			次写的数据，第三次返回0x00【所以和绝对时间没有关系】
+			5.将第二条命令改为修改sleep delay的命令，sleep delay的设置会生效
+		#A2 : 经过测试，上述第三次第四次返回0x00是因为发送的指令有错误，第三次第四次发送的地址都为全0，所以返回0
+			#修改错误后继续测试，测出 ：
+			#在sleep delay到达之前，写入的数据能够读出，但是诸如sleep之类的都不会生效，只有sleep delay会生效
+		
+	2017.04.12
+		Q1	:	测试当进入sleep模式启动后立即拉高wake，也能进入sleep模式，目前的设计是不能进入sleep模式，当wake拉高后，
+			状态就会跳转回standby，sleep以及相关counter都会清零
+		A1	:	
+		
+		Q2 	:	在检查寄存器写的时候，代码写得wrreg直接引入sdi信号进行移位，那就是说没有cs变化，只要有clock，则写数据
+			寄存器则会变化[wrdat_reg]，而wr_en在cs拉高之后没有清零，则可能导致写出错
+		A2 	:	在有clock的同时，wr en会被清除，所以目前来看没有问题
+		
+		Q3	:	测试连续的命令发送，设置sleep delay为1ms，发起进入sleep模式的命令，然后拉高en_gate，当en_gate拉高时间处于
+			1ms[实际800us]之前，都不能进入sleep模式，当处于1ms之后，则能进入测试模式；
+			假设把en_gate更改为wake，发起进入sleep模式后，无论wake为何值，都会进入sleep模式，假设wake一直为高，则进入sleep
+			之后400us左右跳出sleep[nfault重新toggle]，假设wake在1ms之前给一个低脉冲，则保持在sleep状态。当wake拉高持续到1ms
+			之后[实际800us]，则会在400us之后退出sleep
+		A3 	:	目前代码还未完全保持一致
+		
+		Q4	:	经过测试，在en_gate为高的时候也能进入sleep状态，但是wake的低条件是必须满足 ：
+			当在operating状态下，en_gate为高，假设此时发生fault，则会调到standby状态，此时再拉低wake，然后可以在en_gate为
+			高的时候进入sleep模式
+	}	
+99.3 	
+	
+	
+
+
+
+}
+
+
+#--------------------------------------------------------------------------------------------------------------------------

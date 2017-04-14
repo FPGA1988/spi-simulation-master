@@ -10,25 +10,32 @@
 //**************************************************************************************************** 
 //Create Date    : 2017-04-01 17:30
 //First Author   : bwang
-//Last Modify    : 2017-04-09 14:20
+//Last Modify    : 2017-04-14 14:20
 //Last Author    : bwang
 //Version Number : 001
 //**************************************************************************************************** 
 //Change History(latest change first)
 //yyyy.mm.dd - Author - Your log of change
 //**************************************************************************************************** 
+//2017.04.14 - bwang - Add some comment and add the i/o in the testbench.
 //2017.04.01 - bwang - The initial version.
 //**************************************************************************************************** 
 //File Include : system header file
 
-module testbench;
+module testbench(
+    output  wire            spi_cs_n    ,//chip select
+    output  wire            spi_sclk    ,//serial clock
+    input   wire            spi_miso    ,//master input and slave output
+    output  wire            spi_mosi     //master output and slave input
+
+);
 
 
     //************************************************************************************************
     // 1.Parameter and constant define
     //************************************************************************************************
     //------------------------------------------------------------------------------------------------
-    // 1.1 The parameter 
+    // 1.1 The standard parameter 
     //------------------------------------------------------------------------------------------------   
     //Normal
     parameter HIGH                  =   1   ;
@@ -42,7 +49,9 @@ module testbench;
     parameter BYTE                  =  08   ;
     parameter WORD                  =  16   ;
     parameter DWORD                 =  32   ;
-    //SPI
+    //------------------------------------------------------------------------------------------------
+    // 1.2 The SPI Timing Parameter 
+    //------------------------------------------------------------------------------------------------   
     parameter tCLKL                 =  40   ;
     parameter tCLKH                 =  40   ;
     parameter tSU_SDI               =  20   ;
@@ -52,6 +61,16 @@ module testbench;
     parameter tHD_SCS               =  50   ;
     parameter tHI_SCS               = 400   ;
 
+    parameter tPOR                  = 100_000   ;
+
+    //------------------------------------------------------------------------------------------------
+    // 1.3 The Option
+    //------------------------------------------------------------------------------------------------   
+    //`define WAVE_GEN                    1
+    `define WAVE_FSDB                   1
+    `ifndef WAVE_FSDB
+        `define WAVE_VCD                1
+    `endif
     //------------------------------------------------------------------------------------------------
     // 1.2 The task prototype
     //------------------------------------------------------------------------------------------------   
@@ -105,10 +124,6 @@ module testbench;
     //------------------------------------------------------------------------------------------------
     // 2.1 SPI Interface
     //------------------------------------------------------------------------------------------------   
-    wire                        spi_cs_n        ;//chip select
-    wire                        spi_miso        ;//master input and slave output
-    reg                         spi_mosi        ;//master output and slave input
-    wire                        spi_sclk        ;//serial clock
 
     //------------------------------------------------------------------------------------------------
     // 2.1 SPI Interface
@@ -119,13 +134,34 @@ module testbench;
     // 3.Main code
     //************************************************************************************************
     //------------------------------------------------------------------------------------------------
-    // 3.1
+    // 3.1 the wave file generate
+    //------------------------------------------------------------------------------------------------
+    `ifdef WAVE_GEN
+        initial begin
+            `ifdef WAVE_VCD
+                $dumpfile("wave.vcd");
+                $dumpon;
+            `endif
+            `ifdef WAVE_FSDB
+                $dumpfile("wave.fsdb");
+            `endif
+            $dumpvars(0,testbench);
+        end
+    `endif
+    //------------------------------------------------------------------------------------------------
+    // 3.1 the spi register write and read example
     //------------------------------------------------------------------------------------------------
     initial begin
-        #2000;
-        write_data = 'h00;
-        spi.spi_write_read(WRITE_0,write_data,read_data);
-        spi.spi_write_read(READ_0,write_data,read_data);
+        //1.wait por cfg done
+        #tPOR;
+        
+        //2.spi register write and read
+        write_data = 'haa;
+        //2.1 spi write data : data -> 0x5 
+        spi.spi_write_read(WRITE_5,write_data,read_data);
+        //2.2 spi read data : data <- 0x5 
+        spi.spi_write_read(READ_5,write_data,read_data);
+        //2.3 data compare
         if(read_data != write_data) begin
             $display("Error : write data[%h] != read data[%h].",write_data,read_data);
             $finish();
@@ -133,20 +169,12 @@ module testbench;
         else begin
             $display("Success : write data[%h] = read_data[%h].",write_data,read_data);
         end
-
-            
         #10_000;
-        $dumpoff;
+        `ifdef WAVE_VCD 
+            $dumpoff;
+        `endif
         $finish();
     end 
-     
-    
-    initial begin
-        $dumpfile("wave.vcd");
-        $dumpvars(0,testbench);
-        $dumpon;
-    end
-
      
     //************************************************************************************************
     // 4.Submodule
