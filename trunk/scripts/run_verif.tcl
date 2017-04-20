@@ -1,6 +1,6 @@
 variable CMD_WIDTH
 
-#source run_verif.tcl
+source run_verif.tcl
 
 frame .f1
 frame .f2
